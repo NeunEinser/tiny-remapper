@@ -443,7 +443,20 @@ public class TinyRemapper {
 	}
 
 	String mapClass(String className) {
-		return remapper.map(className);
+		String ret = remapper.map(className);
+		String outerClass = className;
+		String unmapped = "";
+
+		while ((ret == null || ret.equals(className)) && outerClass.contains("$")) {
+			unmapped = outerClass.substring(outerClass.lastIndexOf('$')) + unmapped;
+			outerClass = outerClass.substring(0, outerClass.lastIndexOf('$'));
+
+			String remappedOuterClass = remapper.map(outerClass);
+			if(remappedOuterClass != null)
+				ret =  remappedOuterClass + unmapped;
+		}
+
+		return ret != null ? ret : className;
 	}
 
 	private void loadMappings() {
