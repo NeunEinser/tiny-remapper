@@ -21,6 +21,8 @@ import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 import org.objectweb.asm.Opcodes;
 
+import net.fabricmc.tinyremapper.TinyRemapper.MrjState;
+
 public final class MemberInstance {
 	MemberInstance(MemberInstance.MemberType type, ClassInstance cls, String name, String desc, int access) {
 		this.type = type;
@@ -30,8 +32,12 @@ public final class MemberInstance {
 		this.access = access;
 	}
 
+	public MrjState getContext() {
+		return cls.getContext();
+	}
+
 	public String getId() {
-		return getId(type, name, desc, cls.context.ignoreFieldDesc);
+		return getId(type, name, desc, cls.tr.ignoreFieldDesc);
 	}
 
 	public boolean isStatic() {
@@ -40,6 +46,10 @@ public final class MemberInstance {
 
 	public boolean isVirtual() {
 		return type == MemberType.METHOD && (access & (Opcodes.ACC_STATIC | Opcodes.ACC_PRIVATE)) == 0;
+	}
+
+	public boolean isBridge() {
+		return type == MemberType.METHOD && (access & Opcodes.ACC_BRIDGE) != 0;
 	}
 
 	public boolean isPublicOrPrivate() {
@@ -51,19 +61,40 @@ public final class MemberInstance {
 	}
 
 	public String getNewName() {
+		String ret = newBridgedName;
+
+		return ret != null ? ret : newName;
+	}
+
+	public String getNewMappedName() {
 		return newName;
 	}
 
-	public boolean setNewName(String name) {
+	public String getNewBridgedName() {
+		return newBridgedName;
+	}
+
+	public boolean setNewName(String name, boolean fromBridge) {
 		if (name == null) throw new NullPointerException("null name");
 
-		boolean ret = newNameUpdater.compareAndSet(this, null, name);
+		if (fromBridge) {
+			boolean ret = newBridgedNameUpdater.compareAndSet(this, null, name);
 
-		return ret || name.equals(newName);
+			return ret || name.equals(newBridgedName);
+		} else {
+			boolean ret = newNameUpdater.compareAndSet(this, null, name);
+
+			return ret || name.equals(newName);
+		}
 	}
 
 	public void forceSetNewName(String name) {
 		newName = name;
+	}
+
+	@Override
+	public String toString() {
+		return String.format("%s/%s%s", cls.getName(), name, desc);
 	}
 
 	public static String getId(MemberType type, String name, String desc, boolean ignoreFieldDesc) {
@@ -83,8 +114,10 @@ public final class MemberInstance {
 			return id;
 		} else {
 			String separator = type == MemberType.METHOD ? "(" : ";;";
+			int pos = id.lastIndexOf(separator);
+			if (pos < 0) throw new IllegalArgumentException(String.format("invalid %s id: %s", type.name(), id));
 
-			return id.substring(0, id.lastIndexOf(separator));
+			return id.substring(0, pos);
 		}
 	}
 
@@ -94,6 +127,7 @@ public final class MemberInstance {
 	}
 
 	private static final AtomicReferenceFieldUpdater<MemberInstance, String> newNameUpdater = AtomicReferenceFieldUpdater.newUpdater(MemberInstance.class, String.class, "newName");
+	private static final AtomicReferenceFieldUpdater<MemberInstance, String> newBridgedNameUpdater = AtomicReferenceFieldUpdater.newUpdater(MemberInstance.class, String.class, "newBridgedName");
 
 	final MemberInstance.MemberType type;
 	final ClassInstance cls;
@@ -101,5 +135,7 @@ public final class MemberInstance {
 	final String desc;
 	final int access;
 	private volatile String newName;
+	private volatile String newBridgedName;
 	String newNameOriginatingCls;
+	MemberInstance bridgeTarget;
 }
