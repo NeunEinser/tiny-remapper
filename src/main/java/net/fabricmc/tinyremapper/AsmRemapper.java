@@ -38,6 +38,19 @@ class AsmRemapper extends TrRemapper {
 	@Override
 	public String map(String typeName) {
 		String ret = tr.classMap.get(typeName);
+
+		String outerType = typeName;
+		String unmapped = "";
+
+		while ((ret == null || ret.equals(typeName)) && outerType.contains("$")) {
+			unmapped = outerType.substring(outerType.lastIndexOf('$')) + unmapped;
+			outerType = outerType.substring(0, outerType.lastIndexOf('$'));
+
+			String remappedOuterType = tr.classMap.get(outerType);
+			if(remappedOuterType != null)
+				ret =  remappedOuterType + unmapped;
+		}
+
 		if (ret != null) return ret;
 
 		return tr.extraRemapper != null ? tr.extraRemapper.map(typeName) : typeName;
